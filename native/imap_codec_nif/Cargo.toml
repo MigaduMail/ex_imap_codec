@@ -1,0 +1,15 @@
+[package]
+name = "imap_codec_nif"
+version = "0.1.0"
+authors = []
+edition = "2021"
+
+[lib]
+name = "imap_codec_nif"
+crate-type = ["cdylib"]
+
+[dependencies]
+imap-codec = { version = "2.0.0-alpha.5", features = ["serde"]}
+# imap-types = { version = "1.0.0" }
+rustler = { version =  "0.36.1", features = ["nif_version_2_16"] }
+serde = { version = "1.0", features = ["derive"] }
