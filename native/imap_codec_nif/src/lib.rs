@@ -1,30 +1,79 @@
-use rustler::{NifResult};
 use imap_codec::{decode::Decoder, CommandCodec};
+use imap_types::command::CommandBody;
+use rustler::{NifStruct, Term, Env, Encoder};
+use imap_types::IntoStatic;
 
-#[rustler::nif]
-fn decode_imap_command(input: &str) -> NifResult<String> {
-    println!("{:?}", input);
-
-    // let input = "ABCD UID FETCH 1,2:* (BODY.PEEK[1.2.3.4.MIME]<42.1337>)\r\n";
-    let codec = CommandCodec::new();
-    match codec.decode(input.as_bytes()) {
-        Ok((_, command)) => {
-            // Assuming Command has a method to convert it to a String, adjust as necessary
-            let command_string = format!("{:?}", command); //command.to_string(); // Replace with actual conversion if needed
-            println!("OK - #{}", command_string);
-            println!("OK tag - #{:?}", command.tag);
-            println!("OK body - #{:?}", command.body);
-            Ok(command_string)
-        },
-        Err(e) => {
-            // Convert CommandDecodeError to a string representation
-            // let error_message = format!("{:?}", e); // Or use e.to_string() if implemented
-            println!("Error - {:?}", e);
-
-            Err(::rustler::Error::BadArg)
-        },
-    }
+macro_rules! make_map {
+    ($env:expr, { $($key:expr => $value:expr),* $(,)? }) => {{
+        let mut map = Term::map_new($env);
+        $(
+            map = map.map_put(
+                $key.encode($env),
+                $value.encode($env)
+            ).unwrap();
+        )*
+        map
+    }};
 }
 
+#[derive(NifStruct)]
+#[module = "ExImapCodec.CommandResult"]
+pub struct CommandResult<'a> {
+    pub tag: String,
+    pub command_type: String,
+    pub arguments: Term<'a>,
+}
+
+#[rustler::nif]
+fn decode_imap_command<'a>(env: Env<'a>, input: &str) -> Result<CommandResult<'a>, rustler::Error> {
+    let codec = CommandCodec::new();
+
+    match codec.decode(input.as_bytes()) {
+        Ok((_binary_data, command)) => {
+            let tag = format!("{:?}", command.tag.into_static());
+
+            let (command_type, arguments) = match command.body {
+                CommandBody::Login { username, password } => (
+                    "LOGIN".to_string(),
+                    make_map!(env, {
+                        "username" => format!("{:?}", username),
+                        "password" => format!("{:#?}", password)
+                    }),
+                ),
+                // CommandBody::Select { mailbox } => (
+                //     "SELECT".to_string(),
+                //     make_map!(env, {
+                //         "mailbox" => mailbox.to_string()
+                //     }),
+                // ),
+                // CommandBody::List { reference, mailbox_wildcard, .. } => (
+                //     "LIST".to_string(),
+                //     make_map!(env, {
+                //         "reference" => reference.to_string(),
+                //         "mailbox" => mailbox_wildcard.to_string()
+                //     }),
+                // ),
+                // CommandBody::Fetch { sequence, items } => (
+                //     "FETCH".to_string(),
+                //     make_map!(env, {
+                //         "sequence" => sequence.to_string(),
+                //         "items" => format!("{:?}", items)
+                //     }),
+                // ),
+                _ => (
+                    format!("{:?}", command.body),
+                    make_map!(env, {})
+                ),
+            };
+
+            Ok(CommandResult {
+                tag,
+                command_type,
+                arguments,
+            })
+        }
+        Err(err) => Err(rustler::Error::Term(Box::new(format!("Decode error: {:?}", err)))),
+    }
+}
 
 rustler::init!("Elixir.ExImapCodec");
