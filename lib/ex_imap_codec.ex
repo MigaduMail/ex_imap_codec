@@ -6,10 +6,6 @@ defmodule ExImapCodec do
     otp_app: :ex_imap_codec,
     crate: :imap_codec_nif
 
-  defp err do
-    throw(NifNotLoadedError)
-  end
-
   def decode_imap_command(_) do
     :erlang.nif_error(:nif_not_loaded)
   end

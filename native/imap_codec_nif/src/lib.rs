@@ -1,11 +1,9 @@
 use imap_codec::{decode::Decoder, CommandCodec};
-use imap_types::command::CommandBody;
-use rustler::{NifStruct, Term, Env, Encoder};
-use imap_types::IntoStatic;
+use rustler::{NifStruct, Term, Env};
 
 macro_rules! make_map {
     ($env:expr, { $($key:expr => $value:expr),* $(,)? }) => {{
-        let mut map = Term::map_new($env);
+        let map = Term::map_new($env);
         $(
             map = map.map_put(
                 $key.encode($env),
@@ -19,8 +17,9 @@ macro_rules! make_map {
 #[derive(NifStruct)]
 #[module = "ExImapCodec.CommandResult"]
 pub struct CommandResult<'a> {
+    pub original_command: String,
     pub tag: String,
-    pub command_type: String,
+    pub command: String,
     pub arguments: Term<'a>,
 }
 
@@ -30,46 +29,16 @@ fn decode_imap_command<'a>(env: Env<'a>, input: &str) -> Result<CommandResult<'a
 
     match codec.decode(input.as_bytes()) {
         Ok((_binary_data, command)) => {
-            let tag = format!("{:?}", command.tag.into_static());
-
-            let (command_type, arguments) = match command.body {
-                CommandBody::Login { username, password } => (
-                    "LOGIN".to_string(),
-                    make_map!(env, {
-                        "username" => format!("{:?}", username),
-                        "password" => format!("{:#?}", password)
-                    }),
-                ),
-                // CommandBody::Select { mailbox } => (
-                //     "SELECT".to_string(),
-                //     make_map!(env, {
-                //         "mailbox" => mailbox.to_string()
-                //     }),
-                // ),
-                // CommandBody::List { reference, mailbox_wildcard, .. } => (
-                //     "LIST".to_string(),
-                //     make_map!(env, {
-                //         "reference" => reference.to_string(),
-                //         "mailbox" => mailbox_wildcard.to_string()
-                //     }),
-                // ),
-                // CommandBody::Fetch { sequence, items } => (
-                //     "FETCH".to_string(),
-                //     make_map!(env, {
-                //         "sequence" => sequence.to_string(),
-                //         "items" => format!("{:?}", items)
-                //     }),
-                // ),
-                _ => (
-                    format!("{:?}", command.body),
-                    make_map!(env, {})
-                ),
-            };
+            let command_str = serde_json::to_string_pretty(&command.body).unwrap();
+            let arguments_str = make_map!(env, {});
+            // let arguments_str = serde_json::to_string_pretty(&env).unwrap();
+            let tag_str = command.tag.inner().to_string();
 
             Ok(CommandResult {
-                tag,
-                command_type,
-                arguments,
+                original_command: input.to_string(),
+                tag: tag_str,
+                command: command_str,
+                arguments: arguments_str,
             })
         }
         Err(err) => Err(rustler::Error::Term(Box::new(format!("Decode error: {:?}", err)))),
